@@ -1,0 +1,17 @@
+{
+  "name": "okoa-jamii",
+  "private": true,
+  "scripts": {
+    "backend:dev": "npm --prefix backend run dev",
+    "backend:build": "npm --prefix backend run build",
+    "backend:test": "npm --prefix backend test",
+    "dashboard:dev": "npm --prefix dashboard run dev",
+    "dashboard:build": "npm --prefix dashboard run build",
+    "dashboard:lint": "npm --prefix dashboard run lint",
+    "dashboard:typecheck": "npm --prefix dashboard run typecheck",
+    "mobile:start": "npm --prefix mobile run start",
+    "mobile:web": "npm --prefix mobile run web",
+    "mobile:typecheck": "npm --prefix mobile run typecheck",
+    "mobile:export": "npm --prefix mobile run export"
+  }
+}
