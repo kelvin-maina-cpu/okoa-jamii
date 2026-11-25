@@ -6,6 +6,10 @@ import { AuditLog } from './models/AuditLog.js';
 import { Incident } from './models/Incident.js';
 import { signAccessToken } from './utils/jwt.js';
 
+vi.mock('./services/smsNotificationService.js', () => ({
+  createEmergencySmsNotifications: vi.fn().mockResolvedValue(undefined),
+}));
+
 const reporterId = new Types.ObjectId();
 const otherCitizenId = new Types.ObjectId();
 

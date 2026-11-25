@@ -5,9 +5,7 @@ import { CategorySelector } from '../components/CategorySelector';
 import { RootStackParamList } from '../navigation/types';
 import { useAuth } from '../context/AuthContext';
 import { captureCurrentLocation, LOCATION_PERMISSION_RECOVERY } from '../services/locationService';
-import { createSos } from '../services/incidentApi';
-import { enqueueIncident } from '../services/incidentQueue';
-import { ApiError } from '../services/apiClient';
+import { submitIncidentLocallyFirst } from '../services/incidentSync';
 import { createClientGeneratedId } from '../utils/format';
 import { IncidentType } from '../types/incidents';
 import { colors } from '../theme/colors';
@@ -57,24 +55,19 @@ export function HomeScreen({ navigation }: Props) {
         occurredAt,
         clientGeneratedId,
       };
-      try {
-        const result = await createSos(payload, tokens.accessToken);
+      const result = await submitIncidentLocallyFirst('sos', payload, tokens.accessToken, user.id);
+      if (result.outcome === 'delivered') {
         navigation.navigate('SubmissionResult', {
-          outcome: 'delivered', incidentType: category, reference: result.incident.reference,
-          incidentId: result.incident.id, message: result.duplicate ? 'This SOS was already received by the server.' : 'SOS received by the server.',
+          outcome: 'delivered', incidentType: category, reference: result.incident?.reference,
+          incidentId: result.incidentId, message: 'SOS received by the server.',
         });
-      } catch (error) {
-        // Only a transport failure is treated as offline. Server rejections stay visible as failures.
-        if (!(error instanceof TypeError) && !(error instanceof ApiError && error.statusCode >= 500)) {
-          navigation.navigate('SubmissionResult', {
-            outcome: 'failed', incidentType: category, message: error instanceof Error ? error.message : 'SOS could not be submitted.',
-          });
-          return;
-        }
-        const queued = await enqueueIncident('sos', payload);
+      } else if (result.outcome === 'queued') {
         navigation.navigate('SubmissionResult', {
-          outcome: 'queued', incidentType: category, localId: queued.localId,
-          message: 'SOS saved on this device and is waiting to sync. The server has not received it yet.',
+          outcome: 'queued', incidentType: category, localId: result.localId, message: result.message,
+        });
+      } else {
+        navigation.navigate('SubmissionResult', {
+          outcome: 'failed', incidentType: category, localId: result.localId, message: result.message,
         });
       }
     } catch (error) {

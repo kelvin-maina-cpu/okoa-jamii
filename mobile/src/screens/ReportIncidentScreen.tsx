@@ -5,9 +5,7 @@ import { CategorySelector } from '../components/CategorySelector';
 import { RootStackParamList } from '../navigation/types';
 import { useAuth } from '../context/AuthContext';
 import { captureCurrentLocation, LOCATION_PERMISSION_RECOVERY } from '../services/locationService';
-import { createIncident } from '../services/incidentApi';
-import { ApiError } from '../services/apiClient';
-import { enqueueIncident } from '../services/incidentQueue';
+import { submitIncidentLocallyFirst } from '../services/incidentSync';
 import { pickAudioEvidence, pickPhotoEvidence, EVIDENCE_NOT_UPLOADED_NOTICE } from '../services/evidenceService';
 import { createClientGeneratedId } from '../utils/format';
 import { IncidentEvidence, IncidentType } from '../types/incidents';
@@ -15,7 +13,7 @@ import { colors } from '../theme/colors';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ReportIncident'>;
 export function ReportIncidentScreen({ navigation }: Props) {
-  const { tokens } = useAuth();
+  const { tokens, user } = useAuth();
   const [category, setCategory] = useState<IncidentType>('other');
   const [description, setDescription] = useState('');
   const [area, setArea] = useState('');
@@ -45,17 +43,15 @@ export function ReportIncidentScreen({ navigation }: Props) {
     setError('');
     if (description.trim().length < 5) { setError('Describe what happened in at least 5 characters.'); return; }
     if (!location && area.trim().length < 3) { setError('Add GPS location or describe the area (at least 3 characters).'); return; }
-    if (!tokens) { setError('Your session is unavailable. Sign in again.'); return; }
+    if (!tokens || !user) { setError('Your session is unavailable. Sign in again.'); return; }
     setBusy(true);
     const payload = { incidentType: category, description: description.trim(), location, addressOrArea: area.trim() || undefined, occurredAt: new Date().toISOString(), clientGeneratedId: createClientGeneratedId(), evidence };
     try {
-      const result = await createIncident(payload, tokens.accessToken);
-      navigation.replace('SubmissionResult', { outcome: 'delivered', incidentType: category, incidentId: result.incident.id, reference: result.incident.reference, message: result.duplicate ? 'This report was already received by the server.' : 'Report received by the server.' });
+      const result = await submitIncidentLocallyFirst('incident', payload, tokens.accessToken, user.id);
+      if (result.outcome === 'delivered') navigation.replace('SubmissionResult', { outcome: 'delivered', incidentType: category, incidentId: result.incidentId, reference: result.incident?.reference, message: 'Report received by the server.' });
+      else navigation.replace('SubmissionResult', { outcome: result.outcome, incidentType: category, localId: result.localId, message: result.message });
     } catch (cause) {
-      if (cause instanceof TypeError || (cause instanceof ApiError && cause.statusCode >= 500) || (cause instanceof Error && /network|fetch/i.test(cause.message))) {
-        const queued = await enqueueIncident('incident', payload);
-        navigation.replace('SubmissionResult', { outcome: 'queued', incidentType: category, localId: queued.localId, message: 'Report saved on this device and is waiting to sync. The server has not received it yet.' });
-      } else setError(cause instanceof Error ? cause.message : 'Report could not be submitted.');
+      setError(cause instanceof Error ? cause.message : 'Report could not be saved locally.');
     } finally { setBusy(false); }
   };
 

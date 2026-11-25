@@ -32,11 +32,12 @@ export function PriorityBadge({ priority }: { priority: IncidentPriority }) {
   );
 }
 
-export type SyncState = 'delivered' | 'pending' | 'failed';
+export type SyncState = 'delivered' | 'pending' | 'syncing' | 'failed';
 
 const SYNC_STYLES: Record<SyncState, { label: string; background: string; text: string }> = {
   delivered: { label: 'Received by server', background: colors.successSoft, text: colors.success },
   pending: { label: 'Saved on device \u2013 waiting to sync', background: colors.warningSoft, text: colors.warning },
+  syncing: { label: 'Syncing with server...', background: colors.infoSoft, text: colors.primary },
   failed: { label: 'Saved on device \u2013 sync failed', background: colors.dangerSoft, text: colors.danger },
 };
 

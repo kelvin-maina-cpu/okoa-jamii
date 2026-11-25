@@ -12,6 +12,7 @@
     "mobile:start": "npm --prefix mobile run start",
     "mobile:web": "npm --prefix mobile run web",
     "mobile:typecheck": "npm --prefix mobile run typecheck",
+    "mobile:test": "npm --prefix backend run test:mobile",
     "mobile:export": "npm --prefix mobile run export"
   }
 }

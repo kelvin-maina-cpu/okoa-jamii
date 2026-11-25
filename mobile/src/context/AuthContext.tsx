@@ -1,7 +1,10 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import * as Network from 'expo-network';
+import { AppState } from 'react-native';
 import { AuthTokens, AuthUser, LoginPayload, RegisterPayload } from '../types/auth';
 import * as authApi from '../services/authApi';
-import { clearTokens, loadTokens, saveTokens } from '../services/secureAuthStorage';
+import { ApiError } from '../services/apiClient';
+import { clearTokens, loadCachedUser, loadTokens, saveCachedUser, saveTokens } from '../services/secureAuthStorage';
 
 interface AuthState {
   user: AuthUser | null;
@@ -13,6 +16,7 @@ interface AuthState {
   login: (payload: LoginPayload) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   logout: () => Promise<void>;
+  refreshSession: () => Promise<void>;
   clearError: () => void;
 }
 
@@ -25,24 +29,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loginLoading, setLoginLoading] = useState(false);
   const [registerLoading, setRegisterLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const refreshingSession = useRef(false);
 
   useEffect(() => {
     const restoreSession = async () => {
       try {
         const persistedTokens = await loadTokens();
         if (!persistedTokens) return;
+        const cachedUser = await loadCachedUser();
 
         try {
           const profile = await authApi.me(persistedTokens.accessToken);
+          await saveCachedUser(profile.user);
           setUser(profile.user);
           setTokens(persistedTokens);
           return;
-        } catch {
-          const refreshed = await authApi.refresh(persistedTokens.refreshToken);
-          await saveTokens({ accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken });
-          const profile = await authApi.me(refreshed.accessToken);
-          setUser(profile.user);
-          setTokens({ accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken });
+        } catch (initialError) {
+          try {
+            const refreshed = await authApi.refresh(persistedTokens.refreshToken);
+            const refreshedTokens = { accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken };
+            await saveTokens(refreshedTokens);
+            setTokens(refreshedTokens);
+            const profile = await authApi.me(refreshed.accessToken);
+            await saveCachedUser(profile.user);
+            setUser(profile.user);
+            setTokens(refreshedTokens);
+          } catch (refreshError) {
+            const unavailable = (error: unknown) => error instanceof TypeError || (error instanceof ApiError && error.statusCode >= 500);
+            if (cachedUser && (unavailable(initialError) || unavailable(refreshError))) {
+              const fallbackTokens = await loadTokens() ?? persistedTokens;
+              setUser(cachedUser);
+              setTokens(fallbackTokens);
+              setErrorMessage('Offline mode: saved reports remain available and will sync when the server is reachable.');
+              return;
+            }
+            throw refreshError;
+          }
         }
       } catch {
         await clearTokens();
@@ -58,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const handleAuthSuccess = async (authResponse: { user: AuthUser; accessToken: string; refreshToken: string }) => {
     const nextTokens = { accessToken: authResponse.accessToken, refreshToken: authResponse.refreshToken };
-    await saveTokens(nextTokens);
+    await Promise.all([saveTokens(nextTokens), saveCachedUser(authResponse.user)]);
     setTokens(nextTokens);
     setUser(authResponse.user);
     setErrorMessage(null);
@@ -101,6 +123,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const refreshSession = async (): Promise<void> => {
+    if (!tokens || refreshingSession.current) return;
+    refreshingSession.current = true;
+    try {
+      try {
+        const profile = await authApi.me(tokens.accessToken);
+        await saveCachedUser(profile.user);
+        setUser(profile.user);
+        setErrorMessage(null);
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.statusCode !== 401) {
+          if (error instanceof ApiError && error.statusCode < 500) throw error;
+          // Network/server outages preserve the cached authenticated session for the offline queue.
+          return;
+        }
+        const refreshed = await authApi.refresh(tokens.refreshToken);
+        const nextTokens = { accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken };
+        await saveTokens(nextTokens);
+        setTokens(nextTokens);
+        const profile = await authApi.me(refreshed.accessToken);
+        await saveCachedUser(profile.user);
+        setUser(profile.user);
+        setErrorMessage(null);
+      }
+    } finally {
+      refreshingSession.current = false;
+    }
+  };
+
+  useEffect(() => {
+    if (!tokens) return;
+    const refreshIfConnected = () => { void refreshSession().catch((error) => setErrorMessage(error instanceof Error ? error.message : 'Session refresh failed.')); };
+    const network = Network.addNetworkStateListener((state) => {
+      if (state.isConnected && state.isInternetReachable !== false) refreshIfConnected();
+    });
+    const appState = AppState.addEventListener('change', (state) => { if (state === 'active') refreshIfConnected(); });
+    return () => { network.remove(); appState.remove(); };
+  }, [tokens]);
+
   const value = useMemo<AuthState>(
     () => ({
       user,
@@ -112,6 +173,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login,
       register,
       logout,
+      refreshSession,
       clearError: () => setErrorMessage(null),
     }),
     [errorMessage, initializing, loginLoading, registerLoading, tokens, user],

@@ -97,10 +97,13 @@ export type QueueEndpoint = 'incident' | 'sos';
 
 export interface QueuedIncident {
   localId: string;
+  reporterId?: string;
   endpoint: QueueEndpoint;
   payload: CreateIncidentInput;
   createdAt: string;
-  syncState: 'pending' | 'failed';
-  attemptCount: number;
-  lastError?: string;
+  syncStatus: 'pending_sync' | 'syncing' | 'synced' | 'failed';
+  retryCount: number;
+  lastAttemptAt?: string;
+  serverIncidentId?: string;
+  errorMessage?: string;
 }

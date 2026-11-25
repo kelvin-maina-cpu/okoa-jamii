@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { useEffect } from 'react';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { ForgotPasswordScreen } from './src/screens/ForgotPasswordScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -13,6 +14,8 @@ import { MyReportsScreen } from './src/screens/MyReportsScreen';
 import { IncidentDetailsScreen } from './src/screens/IncidentDetailsScreen';
 import { SubmissionResultScreen } from './src/screens/SubmissionResultScreen';
 import { colors } from './src/theme/colors';
+import { initializeIncidentDatabase } from './src/services/incidentQueue';
+import { startIncidentSyncManager, stopIncidentSyncManager } from './src/services/incidentSync';
 
 type RootStackParamList = {
   Welcome: undefined;
@@ -29,7 +32,17 @@ type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 function AuthNavigation() {
-  const { user, initializing } = useAuth();
+  const { user, tokens, initializing } = useAuth();
+
+  useEffect(() => {
+    initializeIncidentDatabase();
+  }, []);
+
+  useEffect(() => {
+    if (user && tokens) void startIncidentSyncManager(tokens.accessToken, user.id);
+    else stopIncidentSyncManager();
+    return stopIncidentSyncManager;
+  }, [tokens, user]);
 
   if (initializing) {
     return (

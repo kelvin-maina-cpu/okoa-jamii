@@ -9,6 +9,7 @@ import {
   listMyIncidents,
 } from '../services/incidentService.js';
 import { MyIncidentsQuery } from '../validators/incidentValidators.js';
+import { createEmergencySmsNotifications } from '../services/smsNotificationService.js';
 
 function requireAuthContext(req: AuthenticatedRequest) {
   if (!req.auth) throw new AppError('Authentication required', 401);
@@ -31,6 +32,12 @@ export const createIncidentController = asyncHandler<AuthenticatedRequest>(async
 export const createSosController = asyncHandler<AuthenticatedRequest>(async (req, res: Response) => {
   const auth = requireAuthContext(req);
   const result = await createSosReport(auth.userId, req.body);
+  if (!result.duplicate) {
+    // Delivery tracking is separate and best-effort; notification failure never rejects the saved SOS.
+    await createEmergencySmsNotifications(result.incident.id, auth.userId).catch((error) => {
+      console.error('Unable to create SMS notification record for SOS:', error instanceof Error ? error.message : error);
+    });
+  }
 
   res.status(result.duplicate ? 200 : 201).json({
     incident: result.incident,

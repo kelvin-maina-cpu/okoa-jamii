@@ -12,11 +12,12 @@ export function SubmissionResultScreen({ route, navigation }: Props) {
   const queued = outcome === 'queued';
   return <View style={styles.container}>
     <View style={[styles.symbol, delivered ? styles.ok : queued ? styles.pending : styles.failed]}><Text style={styles.symbolText}>{delivered ? '✓' : queued ? '…' : '!'}</Text></View>
-    <Text accessibilityRole="header" style={styles.title}>{delivered ? 'Report received' : queued ? 'Saved on this device' : 'Report not submitted'}</Text>
+    <Text accessibilityRole="header" style={styles.title}>{delivered ? 'Report received' : queued ? 'Saved on this device' : localId ? 'Not received by server' : 'Report not submitted'}</Text>
     <Text style={styles.message}>{message}</Text>
     {reference && <Text style={styles.reference}>Reference: {reference}</Text>}
     <Text style={styles.category}>{getCategoryLabel(incidentType)}</Text>
     {queued && <Text style={styles.notice}>The server has not received this report yet. Keep the app on this device and try again when connected.</Text>}
+    {!delivered && !queued && localId && <Text style={styles.notice}>A local copy remains on this device. Review its error and use My reports to retry when appropriate.</Text>}
     {!delivered && !queued && detail && <Text style={styles.notice}>{detail}</Text>}
     <Pressable style={styles.button} onPress={() => incidentId ? navigation.replace('IncidentDetails', { incidentId }) : localId ? navigation.replace('IncidentDetails', { localId }) : navigation.replace('Home')}><Text style={styles.buttonText}>{incidentId || localId ? 'View report details' : 'Return to home'}</Text></Pressable>
     <Pressable onPress={() => navigation.navigate('MyReports')} style={styles.link}><Text style={styles.linkText}>My reports</Text></Pressable>
