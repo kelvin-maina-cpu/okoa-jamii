@@ -28,7 +28,19 @@
     },
     "plugins": [
       "expo-sqlite",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Okoa Jamii uses your location to attach GPS coordinates to emergency reports and SOS alerts."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Okoa Jamii needs photo access so you can attach evidence to an incident report."
+        }
+      ]
     ]
   }
 }

@@ -20,3 +20,13 @@ export const authRateLimiter = skipInTest(
     message: { error: 'Too many authentication attempts. Try again later.' },
   }),
 );
+
+export const incidentRateLimiter = skipInTest(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many incident submissions. Try again shortly.' },
+  }),
+);

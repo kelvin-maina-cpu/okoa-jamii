@@ -8,6 +8,10 @@ import { HomeScreen } from './src/screens/HomeScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { RegisterScreen } from './src/screens/RegisterScreen';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
+import { ReportIncidentScreen } from './src/screens/ReportIncidentScreen';
+import { MyReportsScreen } from './src/screens/MyReportsScreen';
+import { IncidentDetailsScreen } from './src/screens/IncidentDetailsScreen';
+import { SubmissionResultScreen } from './src/screens/SubmissionResultScreen';
 import { colors } from './src/theme/colors';
 
 type RootStackParamList = {
@@ -16,6 +20,10 @@ type RootStackParamList = {
   Register: undefined;
   ForgotPassword: undefined;
   Home: undefined;
+  ReportIncident: undefined;
+  MyReports: undefined;
+  IncidentDetails: { incidentId?: string; localId?: string };
+  SubmissionResult: import('./src/types/incidents').SubmissionResultParams;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -35,7 +43,13 @@ function AuthNavigation() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
-          <Stack.Screen name="Home" component={HomeScreen} />
+          <>
+            <Stack.Screen name="Home" component={HomeScreen} />
+            <Stack.Screen name="ReportIncident" component={ReportIncidentScreen} />
+            <Stack.Screen name="MyReports" component={MyReportsScreen} />
+            <Stack.Screen name="IncidentDetails" component={IncidentDetailsScreen} />
+            <Stack.Screen name="SubmissionResult" component={SubmissionResultScreen} />
+          </>
         ) : (
           <>
             <Stack.Screen name="Welcome">

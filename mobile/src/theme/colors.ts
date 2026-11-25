@@ -8,4 +8,11 @@ export const colors = {
   accent: '#C44536',
   border: '#D9E2EC',
   success: '#2F855A',
+  danger: '#B42318',
+  dangerDark: '#7A1710',
+  dangerSoft: '#FBE9E7',
+  warning: '#9A5B0B',
+  warningSoft: '#FDF3DB',
+  successSoft: '#E6F4EA',
+  infoSoft: '#EAF2F8',
 };
