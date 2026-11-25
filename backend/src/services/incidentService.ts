@@ -10,6 +10,8 @@ import { hasPermission } from '../types/permissions.js';
 import { UserRole } from '../types/roles.js';
 import { User } from '../models/User.js';
 import { createEscalationSmsNotifications } from './smsNotificationService.js';
+import { broadcastIncidentEvent } from './realtimeService.js';
+import { createIncidentInAppNotifications } from './inAppNotificationService.js';
 import { CreateIncidentPayload, CreateSosPayload } from '../validators/incidentValidators.js';
 
 const DUPLICATE_KEY_CODE = 11000;
@@ -120,6 +122,16 @@ export function serializeIncident(incident: StoredIncident): IncidentResponse {
   };
 }
 
+function redactIncidentForReporter(response: IncidentResponse): IncidentResponse {
+  return {
+    ...response,
+    statusHistory: response.statusHistory.map(({ status, at }) => ({ status, at })),
+    assignmentHistory: [],
+    assignedOfficerId: undefined,
+    evidence: response.evidence.map(({ kind, name, mimeType, sizeBytes, capturedAt }) => ({ kind, name, mimeType, sizeBytes, capturedAt })),
+  };
+}
+
 function buildLocation(input: { latitude: number; longitude: number } | undefined) {
   if (!input) return undefined;
   return {
@@ -195,6 +207,7 @@ async function persistIncident(
   }
 
   await writeAudit(incident, options.action);
+  broadcastIncidentEvent('created', incident._id.toString());
   return { incident: serializeIncident(incident), duplicate: false };
 }
 
@@ -268,7 +281,7 @@ export async function listMyIncidents(
   const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
 
   return {
-    incidents: (rows as StoredIncident[]).map(serializeIncident),
+    incidents: (rows as StoredIncident[]).map((row) => redactIncidentForReporter(serializeIncident(row))),
     pagination: {
       page,
       limit,
@@ -298,7 +311,8 @@ export async function getIncidentForUser(
     throw new AppError('You do not have access to this incident', 403);
   }
 
-  return serializeIncident(incident);
+  const response = serializeIncident(incident);
+  return hasPermission(role, 'viewIncidents') ? response : redactIncidentForReporter(response);
 }
 
 export async function listOperationsIncidents(query: Record<string, any>, userId: string, role: UserRole) {
@@ -365,7 +379,15 @@ export async function respondToIncident(id: string, userId: string, action: 'ack
     incident.statusHistory.push({ status: incident.status, at: now, by: new Types.ObjectId(userId), note: note ?? `Incident ${action}d` });
   }
   await incident.save();
-  await responseAudit(userId, incident, `incident.${action}`, { status: incident.status, note, officerId: input.officerId });
+  await responseAudit(userId, incident, `incident.${action}`, { status: incident.status, hasNote: Boolean(note), officerId: input.officerId });
+  if (action !== 'note') {
+    const notificationEvent = action === 'acknowledge' ? 'acknowledged' : action === 'assign' ? 'assigned' : action === 'escalate' ? 'escalated' : 'resolved';
+    await createIncidentInAppNotifications({ incidentId: incident._id, reporterId: incident.reporterId,
+      assignedOfficerId: incident.assignedOfficerId, eventType: notificationEvent, eventKey: `${incident._id}:${action}:${now.getTime()}`, actorId: userId,
+    }).catch((error) => console.error('Unable to create in-app incident notification:', error instanceof Error ? error.message : error));
+  }
+  const realtimeType = action === 'assign' ? 'assigned' : action === 'escalate' ? 'escalated' : action === 'resolve' ? 'resolved' : 'status_changed';
+  broadcastIncidentEvent(realtimeType, incident._id.toString());
   if (action === 'escalate') await createEscalationSmsNotifications(id, userId).catch((e) => console.error('Escalation notifications failed:', e));
   return incident;
 }
@@ -379,6 +401,10 @@ export async function autoEscalateStaleIncidents() {
     const updated = await Incident.findOneAndUpdate({ _id: row._id, status: { $in: ['pending', 'acknowledged'] }, autoEscalatedAt: { $exists: false } }, { $set: { status: 'escalated', autoEscalatedAt: now }, $push: { statusHistory: { status: 'escalated', at: now, note: `Automatically escalated after ${minutes} minutes without resolution` } } }, { new: true });
     if (!updated) continue;
     await AuditLog.create({ actorType: 'system', action: 'incident.auto_escalated', resourceType: 'Incident', resourceId: updated._id, metadata: { minutes } });
+    await createIncidentInAppNotifications({ incidentId: updated._id, reporterId: updated.reporterId,
+      assignedOfficerId: updated.assignedOfficerId, eventType: 'escalated', eventKey: `${updated._id}:auto_escalated:${updated.autoEscalatedAt?.getTime() ?? now.getTime()}`,
+    }).catch((error) => console.error('Unable to notify reporter about escalation:', error instanceof Error ? error.message : error));
+    broadcastIncidentEvent('escalated', String(updated._id));
     await createEscalationSmsNotifications(String(updated._id), undefined).catch((e) => console.error('Auto escalation notification failed:', e));
   }
   return stale.length;

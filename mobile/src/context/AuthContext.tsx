@@ -138,14 +138,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Network/server outages preserve the cached authenticated session for the offline queue.
           return;
         }
-        const refreshed = await authApi.refresh(tokens.refreshToken);
-        const nextTokens = { accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken };
-        await saveTokens(nextTokens);
-        setTokens(nextTokens);
-        const profile = await authApi.me(refreshed.accessToken);
-        await saveCachedUser(profile.user);
-        setUser(profile.user);
-        setErrorMessage(null);
+        try {
+          const refreshed = await authApi.refresh(tokens.refreshToken);
+          const nextTokens = { accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken };
+          await saveTokens(nextTokens);
+          setTokens(nextTokens);
+          const profile = await authApi.me(refreshed.accessToken);
+          await saveCachedUser(profile.user);
+          setUser(profile.user);
+          setErrorMessage(null);
+        } catch (refreshError) {
+          if (refreshError instanceof ApiError && refreshError.statusCode === 401) {
+            await clearTokens(); setTokens(null); setUser(null);
+            setErrorMessage('Your session expired. Sign in again to send saved reports.');
+            return;
+          }
+          throw refreshError;
+        }
       }
     } finally {
       refreshingSession.current = false;
@@ -154,12 +163,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!tokens) return;
+    // Keep the default 15-minute access token fresh while the app remains foregrounded.
+    const refreshTimer = setTimeout(() => { void refreshSession().catch((error) => setErrorMessage(error instanceof Error ? error.message : 'Session refresh failed.')); }, 10 * 60 * 1000);
     const refreshIfConnected = () => { void refreshSession().catch((error) => setErrorMessage(error instanceof Error ? error.message : 'Session refresh failed.')); };
     const network = Network.addNetworkStateListener((state) => {
       if (state.isConnected && state.isInternetReachable !== false) refreshIfConnected();
     });
     const appState = AppState.addEventListener('change', (state) => { if (state === 'active') refreshIfConnected(); });
-    return () => { network.remove(); appState.remove(); };
+    return () => { clearTimeout(refreshTimer); network.remove(); appState.remove(); };
   }, [tokens]);
 
   const value = useMemo<AuthState>(

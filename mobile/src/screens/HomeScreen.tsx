@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { CategorySelector } from '../components/CategorySelector';
@@ -9,6 +10,7 @@ import { submitIncidentLocallyFirst } from '../services/incidentSync';
 import { createClientGeneratedId } from '../utils/format';
 import { IncidentType } from '../types/incidents';
 import { colors } from '../theme/colors';
+import { CommunityAnnouncement, getCommunityAnnouncements, getMyNotifications, IncidentNotificationItem, markNotificationRead } from '../services/incidentApi';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 const HOLD_MS = 1800;
@@ -19,6 +21,12 @@ export function HomeScreen({ navigation }: Props) {
   const [holding, setHolding] = useState(false);
   const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [announcements, setAnnouncements] = useState<CommunityAnnouncement[]>([]);
+  const [announcementsLoading, setAnnouncementsLoading] = useState(false);
+  const [announcementsError, setAnnouncementsError] = useState('');
+  const [notifications, setNotifications] = useState<IncidentNotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationError, setNotificationError] = useState('');
   const holdStarted = useRef(0);
   const activated = useRef(false);
 
@@ -36,6 +44,20 @@ export function HomeScreen({ navigation }: Props) {
     }, 40);
     return () => clearInterval(timer);
   }, [holding]);
+
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    if (!tokens) return () => { active = false; };
+    setAnnouncementsLoading(true);
+    void Promise.allSettled([getCommunityAnnouncements(tokens.accessToken), getMyNotifications(tokens.accessToken)]).then(([alertsResult, notificationsResult]) => {
+      if (!active) return;
+      if (alertsResult.status === 'fulfilled') { setAnnouncements(alertsResult.value.alerts ?? []); setAnnouncementsError(''); }
+      else setAnnouncementsError('Announcements are unavailable right now. Your saved reports remain on this device.');
+      if (notificationsResult.status === 'fulfilled') { setNotifications(notificationsResult.value.notifications ?? []); setUnreadCount(notificationsResult.value.unreadCount ?? 0); setNotificationError(''); }
+      else setNotificationError('Incident updates are unavailable right now.');
+    }).finally(() => { if (active) setAnnouncementsLoading(false); });
+    return () => { active = false; };
+  }, [tokens]));
 
   const activateSos = async () => {
     if (busy || !tokens || !user) return;
@@ -110,6 +132,22 @@ export function HomeScreen({ navigation }: Props) {
       <CategorySelector value={category} onChange={setCategory} disabled={busy || holding} label="Emergency category" />
       <Pressable style={styles.primaryButton} onPress={() => navigation.navigate('ReportIncident')}><Text style={styles.primaryText}>Report an incident</Text></Pressable>
       <Pressable style={styles.secondaryButton} onPress={() => navigation.navigate('MyReports')}><Text style={styles.secondaryText}>My reports</Text></Pressable>
+      <View accessibilityLabel="Incident updates" style={styles.announcementSection}>
+        <Text style={styles.announcementTitle}>Incident updates {unreadCount > 0 ? `(${unreadCount} unread)` : ''}</Text>
+        {!!notificationError && <Text accessibilityRole="alert" style={styles.announcementError}>{notificationError}</Text>}
+        {!notificationError && !notifications.some((item) => !item.readAt) && <Text style={styles.announcementMeta}>No unread incident updates.</Text>}
+        {notifications.filter((item) => !item.readAt).slice(0, 3).map((item) => <Pressable key={item._id} accessibilityRole="button" accessibilityLabel={`${item.reference}: ${item.message}`} style={styles.announcementCard} onPress={() => {
+          if (!tokens) return;
+          void markNotificationRead(item._id, tokens.accessToken).then(() => { setNotifications((current) => current.map((entry) => entry._id === item._id ? { ...entry, readAt: new Date().toISOString() } : entry)); setUnreadCount((count) => Math.max(0, count - 1)); navigation.navigate('IncidentDetails', { incidentId: item.incidentId }); }).catch(() => setNotificationError('Could not open this incident update. Please try again.'));
+        }}><Text style={styles.announcementCardTitle}>{item.reference} · {item.eventType}</Text><Text style={styles.announcementBody}>{item.message}</Text><Text style={styles.announcementMeta}>{new Date(item.createdAt).toLocaleString()}</Text></Pressable>)}
+      </View>
+      <View accessibilityLabel="Community announcements" style={styles.announcementSection}>
+        <View style={styles.announcementHeading}><Text style={styles.announcementTitle}>Community announcements</Text><Pressable accessibilityRole="button" onPress={() => { if (!tokens) return; setAnnouncementsLoading(true); void getCommunityAnnouncements(tokens.accessToken).then((result) => { setAnnouncements(result.alerts ?? []); setAnnouncementsError(''); }).catch(() => setAnnouncementsError('Announcements are unavailable right now.')).finally(() => setAnnouncementsLoading(false)); }}><Text style={styles.announcementRefresh}>Refresh</Text></Pressable></View>
+        {announcementsLoading && <Text style={styles.announcementMeta}>Loading announcements…</Text>}
+        {!!announcementsError && <Text accessibilityRole="alert" style={styles.announcementError}>{announcementsError}</Text>}
+        {!announcementsLoading && !announcementsError && announcements.length === 0 && <Text style={styles.announcementMeta}>No current announcements.</Text>}
+        {announcements.slice(0, 3).map((item) => <View key={item._id ?? item.id ?? `${item.title}-${item.publishedAt}`} style={styles.announcementCard}><Text style={styles.announcementCardTitle}>{item.title}</Text><Text style={styles.announcementMeta}>{item.targetArea} · {new Date(item.publishedAt).toLocaleString()}</Text><Text style={styles.announcementBody}>{item.message}</Text></View>)}
+      </View>
       <Text style={styles.disclaimer}>An SOS is a report to the Okoa Jamii server. It does not confirm that dispatch or responders have been contacted.</Text>
     </ScrollView>
   );
@@ -135,4 +173,13 @@ const styles = StyleSheet.create({
   secondaryButton: { backgroundColor: colors.card, padding: 15, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
   secondaryText: { color: colors.primaryStrong, fontSize: 16, fontWeight: '700' },
   disclaimer: { color: colors.mutedText, fontSize: 12, lineHeight: 17, textAlign: 'center', marginBottom: 8 },
+  announcementSection: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, borderRadius: 12, padding: 14, gap: 10 },
+  announcementHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  announcementTitle: { color: colors.text, fontSize: 17, fontWeight: '800' },
+  announcementRefresh: { color: colors.primary, fontWeight: '700', padding: 4 },
+  announcementCard: { borderTopWidth: 1, borderColor: colors.border, paddingTop: 10, gap: 4 },
+  announcementCardTitle: { color: colors.text, fontWeight: '800' },
+  announcementMeta: { color: colors.mutedText, fontSize: 12 },
+  announcementBody: { color: colors.text, fontSize: 14, lineHeight: 19 },
+  announcementError: { color: colors.danger, fontSize: 13 },
 });

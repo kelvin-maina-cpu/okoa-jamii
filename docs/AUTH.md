@@ -10,6 +10,7 @@ Authentication API routes:
 - `POST /api/auth/logout`: refresh token revocation.
 - `GET /api/auth/me`: authenticated profile and permissions.
 - `POST /api/auth/provision-admin`: controlled admin provisioning (Super Administrator only).
+- `POST /api/auth/realtime-ticket`: permission-protected, five-minute ticket for dashboard incident events.
 
 Security controls:
 
@@ -17,6 +18,9 @@ Security controls:
 - Access tokens are short-lived JWT tokens.
 - Refresh tokens are signed JWT tokens plus server-side hashed persistence for revocation and rotation.
 - Rate limiting is applied to register/login/refresh.
+- A configurable CORS origin allowlist and API-wide rate limiter are applied.
+- Production JWT signing secrets shorter than 32 characters are rejected.
+- Socket.IO rechecks the active user and current database role on ticket presentation; the ticket grants only incident read events and expires after five minutes.
 - Validation is enforced with Zod.
 - Centralized error handling prevents sensitive leakage.
 - Password hashes and internal token hashes are never returned in normal user responses.
@@ -42,6 +46,7 @@ Refresh token behavior:
   2. Call `/auth/me` with access token.
   3. If expired, call `/auth/refresh` and retry `/auth/me`.
 - Logout revokes the server refresh token and clears local secure storage.
+- The app refreshes its session when foregrounded/reconnected and proactively before the default 15-minute access-token expiry. Rejected refresh tokens clear the local session while leaving SQLite reports intact.
 - Forgot password is intentionally shown as not yet available.
 
 ## Permissions matrix

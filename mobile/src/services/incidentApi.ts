@@ -51,3 +51,16 @@ export function getIncident(incidentId: string, accessToken: string): Promise<{ 
     authToken: accessToken,
   });
 }
+
+export interface CommunityAnnouncement { id?: string; _id?: string; title: string; message: string; targetArea: string; publishedAt: string; createdAt: string }
+export function getCommunityAnnouncements(accessToken: string): Promise<{ alerts: CommunityAnnouncement[] }> {
+  return apiRequest<{ alerts: CommunityAnnouncement[] }>('/alerts', { method: 'GET', authToken: accessToken });
+}
+
+export interface IncidentNotificationItem { _id: string; incidentId: string; eventType: string; reference: string; message: string; readAt?: string; createdAt: string }
+export function getMyNotifications(accessToken: string): Promise<{ notifications: IncidentNotificationItem[]; unreadCount: number }> {
+  return apiRequest<{ notifications: IncidentNotificationItem[]; unreadCount: number }>('/notifications?limit=10', { method: 'GET', authToken: accessToken });
+}
+export function markNotificationRead(notificationId: string, accessToken: string): Promise<{ notification: IncidentNotificationItem }> {
+  return apiRequest<{ notification: IncidentNotificationItem }>(`/notifications/${encodeURIComponent(notificationId)}/read`, { method: 'PATCH', authToken: accessToken });
+}

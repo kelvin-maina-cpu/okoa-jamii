@@ -10,7 +10,7 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   const statusCode = isAppError ? err.statusCode : 500;
 
   if (!isAppError) {
-    console.error('Unhandled error:', err);
+    console.error('Unhandled server error:', err instanceof Error ? err.name : 'Unknown error');
   }
 
   res.status(statusCode).json({

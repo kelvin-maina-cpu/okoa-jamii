@@ -13,7 +13,11 @@ async function proxy(request: NextRequest, context: Context) {
   const suffix = path.map(encodeURIComponent).join('/');
   const query = request.nextUrl.search;
   const body = ['GET', 'HEAD'].includes(request.method) ? undefined : await request.text();
-  const backendPath = path[0] === 'alerts' ? `/alerts${path.length > 1 ? `/${path.slice(1).join('/')}` : ''}` : `/incidents/${suffix}`;
+  const collection = path[0];
+  const backendBase = collection === 'alerts' || collection === 'analytics' || collection === 'audit' ? `/${collection}` : `/incidents/${suffix}`;
+  const backendPath = ['analytics', 'audit', 'alerts'].includes(collection) && path.length > 1
+    ? `${backendBase}/${path.slice(1).map(encodeURIComponent).join('/')}`
+    : backendBase;
   const call = (token: string) => backendRequest(`${backendPath}${query}`, { method: request.method, body, headers: { 'Content-Type': 'application/json' }, accessToken: token });
   let result = await call(access);
   if (result.status === 401) {

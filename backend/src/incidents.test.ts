@@ -260,6 +260,7 @@ describe('Incident reporting module', () => {
     expect(response.status).toBe(200);
     expect(response.body.incident.id).toBe(incident._id.toString());
     expect(response.body.incident.statusHistory).toHaveLength(1);
+    expect(response.body.incident.statusHistory[0]).not.toHaveProperty('note');
   });
 
   it('blocks other citizens from viewing an incident they did not report', async () => {

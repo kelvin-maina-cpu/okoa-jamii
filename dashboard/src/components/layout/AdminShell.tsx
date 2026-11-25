@@ -13,6 +13,8 @@ interface SessionResponse {
 const items: { label: string; href: string; permission: Permission }[] = [
   { label: 'Incidents', href: '/admin', permission: 'viewIncidents' },
   { label: 'Community Alerts', href: '/admin/alerts', permission: 'publishCommunityAlerts' },
+  { label: 'Analytics', href: '/admin/analytics', permission: 'viewAnalytics' },
+  { label: 'Audit Log', href: '/admin/audit', permission: 'viewAuditLogs' },
 ];
 
 export function AdminShell({ children }: { children: React.ReactNode }) {

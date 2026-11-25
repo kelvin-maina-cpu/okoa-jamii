@@ -6,6 +6,7 @@ import {
   provisionAdminController,
   refreshController,
   registerController,
+  realtimeTicketController,
 } from '../controllers/authController.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requirePermission, requireRoles } from '../middleware/authorize.js';
@@ -26,6 +27,7 @@ router.post('/login', authRateLimiter, validateBody(loginSchema), loginControlle
 router.post('/refresh', authRateLimiter, validateBody(refreshSchema), refreshController);
 router.post('/logout', validateBody(logoutSchema), logoutController);
 router.get('/me', requireAuth, meController);
+router.post('/realtime-ticket', requireAuth, requirePermission('viewIncidents'), authRateLimiter, realtimeTicketController);
 
 router.post(
   '/provision-admin',

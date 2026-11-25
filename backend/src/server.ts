@@ -4,6 +4,7 @@ import { Server } from 'socket.io';
 import { createApp } from './app.js';
 import { connectDatabase } from './config/database.js';
 import { autoEscalateStaleIncidents } from './services/incidentService.js';
+import { attachRealtimeServer } from './services/realtimeService.js';
 
 const port = Number(process.env.PORT || 5000);
 
@@ -21,8 +22,9 @@ async function start(): Promise<void> {
   escalationTimer.unref();
   const app = createApp();
   const server = http.createServer(app);
-  const io = new Server(server, { cors: { origin: process.env.CORS_ORIGIN || 'http://localhost:3000' } });
-  io.on('connection', (socket) => socket.emit('connected', { service: 'Okoa Jamii' }));
+  const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000').split(',').map((origin) => origin.trim()).filter(Boolean);
+  const io = new Server(server, { cors: { origin: allowedOrigins } });
+  attachRealtimeServer(io);
   server.listen(port, () => console.log(`Okoa Jamii API listening on http://localhost:${port}`));
 }
 

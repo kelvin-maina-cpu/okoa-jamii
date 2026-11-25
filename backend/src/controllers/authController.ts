@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AppError } from '../errors/AppError.js';
 import { AuthenticatedRequest } from '../types/auth.js';
+import { signRealtimeToken } from '../utils/jwt.js';
 import { clearRefreshCookie, REFRESH_COOKIE_NAME, setRefreshCookie } from '../utils/cookies.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import {
@@ -78,6 +79,12 @@ export const meController = asyncHandler(async (req: AuthenticatedRequest, res: 
 });
 
 export const provisionAdminController = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const user = await provisionAdminUser(req.body);
+  if (!req.auth) throw new AppError('Authentication required', 401);
+  const user = await provisionAdminUser(req.body, req.auth.userId);
   res.status(201).json({ user });
+});
+
+export const realtimeTicketController = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  if (!req.auth) throw new AppError('Authentication required', 401);
+  res.status(200).json({ ticket: signRealtimeToken(req.auth.userId), expiresInSeconds: 300 });
 });

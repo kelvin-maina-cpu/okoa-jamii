@@ -7,6 +7,7 @@ import { Permission, ROLE_PERMISSIONS } from '../types/permissions.js';
 import { UserRole } from '../types/roles.js';
 import { randomId, sha256 } from '../utils/crypto.js';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt.js';
+import { recordAuditEvent } from './auditService.js';
 
 export interface PublicUser {
   id: string;
@@ -95,6 +96,7 @@ export async function registerCitizen(input: {
   });
 
   const session = await buildSession(user);
+  recordAuditEvent({ actorId: user._id.toString(), action: 'auth.registered', resourceType: 'User', resourceId: user._id, metadata: { role: user.role } });
   return { user: session.user, accessToken: session.accessToken, refreshToken: session.refreshToken };
 }
 
@@ -104,7 +106,7 @@ export async function provisionAdminUser(input: {
   phone?: string;
   password: string;
   role: Exclude<UserRole, 'Citizen'>;
-}): Promise<PublicUser> {
+}, actorId: string): Promise<PublicUser> {
   const normalizedEmail = input.email?.toLowerCase().trim();
   const normalizedPhone = input.phone?.trim();
   const existing = await User.findOne({ $or: [{ email: normalizedEmail }, { phone: normalizedPhone }].filter((item) => Object.values(item)[0]) });
@@ -120,6 +122,8 @@ export async function provisionAdminUser(input: {
     passwordHash,
     role: input.role,
   });
+
+  recordAuditEvent({ actorId, action: 'user.provisioned', resourceType: 'User', resourceId: user._id, metadata: { role: user.role } });
 
   return toPublicUser(user);
 }
@@ -140,6 +144,7 @@ export async function login(input: { emailOrPhone: string; password: string }): 
   }
 
   const session = await buildSession(user);
+  recordAuditEvent({ actorId: user._id.toString(), action: 'auth.login', resourceType: 'User', resourceId: user._id, metadata: { role: user.role } });
   return { user: session.user, accessToken: session.accessToken, refreshToken: session.refreshToken };
 }
 
@@ -165,6 +170,7 @@ export async function refreshSession(rawRefreshToken: string): Promise<AuthResul
   tokenRecord.revokedAt = new Date();
   tokenRecord.replacedByTokenId = nextSession.refreshTokenId;
   await tokenRecord.save();
+  recordAuditEvent({ actorId: user._id.toString(), action: 'auth.refresh', resourceType: 'User', resourceId: user._id, metadata: {} });
 
   return {
     user: nextSession.user,
@@ -182,6 +188,8 @@ export async function logout(rawRefreshToken?: string): Promise<void> {
 
   tokenRecord.revokedAt = new Date();
   await tokenRecord.save();
+  const actorId = tokenRecord.userId?.toString();
+  recordAuditEvent({ ...(actorId ? { actorId, resourceId: tokenRecord.userId } : { actorType: 'system', resourceId: 'unknown' }), action: 'auth.logout', resourceType: 'User', metadata: {} });
 }
 
 export async function getCurrentUser(userId: string): Promise<PublicUser> {

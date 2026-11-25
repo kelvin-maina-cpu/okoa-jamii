@@ -8,7 +8,8 @@ export type Permission =
   | 'resolveIncidents'
   | 'publishCommunityAlerts'
   | 'manageUsers'
-  | 'viewAuditLogs';
+  | 'viewAuditLogs'
+  | 'viewAnalytics';
 
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   Citizen: [],
@@ -23,6 +24,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'publishCommunityAlerts',
     'manageUsers',
     'viewAuditLogs',
+    'viewAnalytics',
   ],
   'Super Administrator': [
     'viewIncidents',
@@ -33,6 +35,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'publishCommunityAlerts',
     'manageUsers',
     'viewAuditLogs',
+    'viewAnalytics',
   ],
 };
 

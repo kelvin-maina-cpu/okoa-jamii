@@ -25,4 +25,5 @@ export type Permission =
   | 'resolveIncidents'
   | 'publishCommunityAlerts'
   | 'manageUsers'
-  | 'viewAuditLogs';
+  | 'viewAuditLogs'
+  | 'viewAnalytics';
