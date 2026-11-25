@@ -7,6 +7,9 @@ import {
   createSosReport,
   getIncidentForUser,
   listMyIncidents,
+  listOperationsIncidents,
+  listEligibleOfficers,
+  respondToIncident,
 } from '../services/incidentService.js';
 import { MyIncidentsQuery } from '../validators/incidentValidators.js';
 import { createEmergencySmsNotifications } from '../services/smsNotificationService.js';
@@ -61,4 +64,17 @@ export const incidentDetailsController = asyncHandler<AuthenticatedRequest>(asyn
   const incident = await getIncidentForUser(auth.userId, auth.role, String(req.params.id));
 
   res.status(200).json({ incident });
+});
+
+export const operationsListController = asyncHandler<AuthenticatedRequest>(async (req, res: Response) => {
+  const auth = requireAuthContext(req);
+  res.status(200).json(await listOperationsIncidents(res.locals.query, auth.userId, auth.role));
+});
+export const officersController = asyncHandler<AuthenticatedRequest>(async (_req, res: Response) => {
+  res.status(200).json({ officers: await listEligibleOfficers() });
+});
+export const responseActionController = (action: 'acknowledge'|'assign'|'escalate'|'resolve'|'note') => asyncHandler<AuthenticatedRequest>(async (req, res: Response) => {
+  const auth = requireAuthContext(req);
+  const incident = await respondToIncident(String(req.params.id), auth.userId, action, req.body);
+  res.status(200).json({ incident, message: `Incident ${action} recorded.` });
 });

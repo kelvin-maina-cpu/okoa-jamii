@@ -6,6 +6,7 @@ export interface ICommunityAlert extends Document {
   targetArea: string;
   createdBy: Types.ObjectId;
   publishedAt?: Date;
+  archivedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -16,6 +17,7 @@ const communityAlertSchema = new Schema<ICommunityAlert>({
   targetArea: { type: String, required: true, trim: true, maxlength: 500 },
   createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   publishedAt: { type: Date, index: true },
+  archivedAt: { type: Date, index: true },
 }, { timestamps: true });
 
 communityAlertSchema.index({ publishedAt: -1 });

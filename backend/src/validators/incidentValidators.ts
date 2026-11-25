@@ -74,3 +74,15 @@ export const myIncidentsQuerySchema = z.object({
 export type CreateIncidentPayload = z.infer<typeof createIncidentSchema>;
 export type CreateSosPayload = z.infer<typeof createSosSchema>;
 export type MyIncidentsQuery = z.infer<typeof myIncidentsQuerySchema>;
+
+export const operationsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).max(10000).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  status: z.enum(['pending', 'acknowledged', 'assigned', 'escalated', 'resolved']).optional(),
+  incidentType: z.enum(INCIDENT_TYPES).optional(),
+  priority: z.enum(['low', 'normal', 'high', 'critical']).optional(),
+  search: z.string().trim().max(100).optional(),
+  assignedToMe: z.coerce.boolean().default(false),
+});
+export const responseActionSchema = z.object({ note: z.string().trim().max(500).optional(), officerId: z.string().regex(/^[a-f\d]{24}$/i).optional() });
+export const alertSchema = z.object({ title: z.string().trim().min(3).max(200), message: z.string().trim().min(5).max(5000), targetArea: z.string().trim().min(2).max(500) });

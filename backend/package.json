@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "seed": "tsx src/seed.ts",
+    "migrate:phase5-notifications": "tsx src/migrations/phase5IncidentNotificationIndexes.ts",
     "test": "vitest run",
     "test:mobile": "vitest run --root ../mobile src/services/incidentQueue.test.ts src/services/incidentSync.test.ts --config ../backend/vitest.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"

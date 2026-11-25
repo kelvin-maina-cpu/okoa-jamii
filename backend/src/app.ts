@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import { authRoutes } from './routes/authRoutes.js';
 import { incidentRoutes } from './routes/incidentRoutes.js';
+import { alertRoutes } from './routes/alertRoutes.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 
 export function createApp() {
@@ -21,6 +22,7 @@ export function createApp() {
 
   app.use('/api/auth', authRoutes);
   app.use('/api/incidents', incidentRoutes);
+  app.use('/api/alerts', alertRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

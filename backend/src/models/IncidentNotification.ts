@@ -5,6 +5,7 @@ export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[number];
 
 export interface IIncidentNotification extends Document {
   incidentId: Types.ObjectId;
+  eventType: 'sos' | 'escalation';
   channel: 'sms';
   recipient?: string;
   message: string;
@@ -19,6 +20,7 @@ export interface IIncidentNotification extends Document {
 
 const incidentNotificationSchema = new Schema<IIncidentNotification>({
   incidentId: { type: Schema.Types.ObjectId, ref: 'Incident', required: true, index: true },
+  eventType: { type: String, enum: ['sos', 'escalation'], required: true, default: 'sos', index: true },
   channel: { type: String, enum: ['sms'], required: true, default: 'sms' },
   recipient: { type: String, trim: true, maxlength: 20 },
   message: { type: String, required: true, maxlength: 160 },
@@ -29,7 +31,7 @@ const incidentNotificationSchema = new Schema<IIncidentNotification>({
   attemptedAt: { type: Date },
 }, { timestamps: true });
 
-incidentNotificationSchema.index({ incidentId: 1, recipient: 1, channel: 1 }, { unique: true });
+incidentNotificationSchema.index({ incidentId: 1, eventType: 1, recipient: 1, channel: 1 }, { unique: true });
 
 export const IncidentNotification = models.IncidentNotification
   || model<IIncidentNotification>('IncidentNotification', incidentNotificationSchema);

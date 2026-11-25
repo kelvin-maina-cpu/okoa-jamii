@@ -1,7 +1,8 @@
 import { Schema, model, models, Document, Types } from 'mongoose';
 
 export interface IAuditLog extends Document {
-  actorId: Types.ObjectId;
+  actorId?: Types.ObjectId;
+  actorType: 'user' | 'system';
   action: string;
   resourceType: string;
   resourceId: Types.ObjectId | string;
@@ -11,7 +12,8 @@ export interface IAuditLog extends Document {
 }
 
 const auditLogSchema = new Schema<IAuditLog>({
-  actorId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  actorId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+  actorType: { type: String, enum: ['user', 'system'], default: 'user', required: true, index: true },
   action: { type: String, required: true, trim: true, maxlength: 100 },
   resourceType: { type: String, required: true, trim: true, maxlength: 100 },
   resourceId: { type: Schema.Types.Mixed, required: true },

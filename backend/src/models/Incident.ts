@@ -30,6 +30,13 @@ export interface StatusHistoryEntry {
   note?: string;
 }
 
+export interface AssignmentHistoryEntry {
+  officerId: Types.ObjectId;
+  assignedBy: Types.ObjectId;
+  at: Date;
+  note?: string;
+}
+
 export interface IIncident extends Document {
   incidentType: IncidentType;
   description: string;
@@ -40,7 +47,10 @@ export interface IIncident extends Document {
   status: IncidentStatus;
   priority: IncidentPriority;
   statusHistory: StatusHistoryEntry[];
+  assignmentHistory: AssignmentHistoryEntry[];
   assignedOfficerId?: Types.ObjectId;
+  assignedAt?: Date;
+  autoEscalatedAt?: Date;
   acknowledgedAt?: Date;
   resolvedAt?: Date;
   source: IncidentSource;
@@ -68,6 +78,13 @@ const statusHistorySchema = new Schema<StatusHistoryEntry>({
   note: { type: String, trim: true, maxlength: 500 },
 }, { _id: false });
 
+const assignmentHistorySchema = new Schema<AssignmentHistoryEntry>({
+  officerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  assignedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  at: { type: Date, required: true },
+  note: { type: String, trim: true, maxlength: 500 },
+}, { _id: false });
+
 const incidentSchema = new Schema<IIncident>({
   incidentType: { type: String, enum: INCIDENT_TYPES, required: true },
   description: { type: String, required: true, trim: true, maxlength: 5000 },
@@ -91,7 +108,10 @@ const incidentSchema = new Schema<IIncident>({
   status: { type: String, enum: INCIDENT_STATUSES, default: 'pending', required: true, index: true },
   priority: { type: String, enum: INCIDENT_PRIORITIES, default: 'normal', required: true, index: true },
   statusHistory: { type: [statusHistorySchema], default: [] },
+  assignmentHistory: { type: [assignmentHistorySchema], default: [] },
   assignedOfficerId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+  assignedAt: { type: Date },
+  autoEscalatedAt: { type: Date, index: true },
   acknowledgedAt: { type: Date },
   resolvedAt: { type: Date },
   source: { type: String, enum: INCIDENT_SOURCES, default: 'mobile', required: true },

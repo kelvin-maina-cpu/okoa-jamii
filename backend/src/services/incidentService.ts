@@ -8,6 +8,8 @@ import {
 } from '../models/Incident.js';
 import { hasPermission } from '../types/permissions.js';
 import { UserRole } from '../types/roles.js';
+import { User } from '../models/User.js';
+import { createEscalationSmsNotifications } from './smsNotificationService.js';
 import { CreateIncidentPayload, CreateSosPayload } from '../validators/incidentValidators.js';
 
 const DUPLICATE_KEY_CODE = 11000;
@@ -45,6 +47,8 @@ export interface IncidentResponse {
   occurredAt: string;
   createdAt: string;
   updatedAt: string;
+  assignedOfficerId?: string;
+  assignmentHistory?: Array<{ officerId: string; assignedBy: string; at: string; note?: string }>;
 }
 
 export interface PaginationInfo {
@@ -111,6 +115,8 @@ export function serializeIncident(incident: StoredIncident): IncidentResponse {
     occurredAt: iso(incident.occurredAt) ?? iso(incident.createdAt) ?? new Date().toISOString(),
     createdAt: iso(incident.createdAt) ?? new Date().toISOString(),
     updatedAt: iso(incident.updatedAt) ?? iso(incident.createdAt) ?? new Date().toISOString(),
+    assignedOfficerId: incident.assignedOfficerId?.toString(),
+    assignmentHistory: (incident.assignmentHistory ?? []).map((a) => ({ officerId: a.officerId.toString(), assignedBy: a.assignedBy.toString(), at: iso(a.at) ?? '', note: a.note })),
   };
 }
 
@@ -293,4 +299,87 @@ export async function getIncidentForUser(
   }
 
   return serializeIncident(incident);
+}
+
+export async function listOperationsIncidents(query: Record<string, any>, userId: string, role: UserRole) {
+  const filter: Record<string, any> = {};
+  if (query.status) filter.status = query.status;
+  if (query.incidentType) filter.incidentType = query.incidentType;
+  if (query.priority) filter.priority = query.priority;
+  if (query.assignedToMe) filter.assignedOfficerId = new Types.ObjectId(userId);
+  if (query.search) {
+    const escapedSearch = query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    filter.$or = [
+    { description: { $regex: escapedSearch, $options: 'i' } },
+    { addressOrArea: { $regex: escapedSearch, $options: 'i' } },
+    { incidentType: { $regex: escapedSearch, $options: 'i' } },
+  ];
+  }
+  const page = query.page ?? 1; const limit = query.limit ?? 20;
+  const [incidents, total, statusCounts, priorityCounts, recent] = await Promise.all([
+    Incident.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).populate('reporterId', 'fullName').populate('assignedOfficerId', 'fullName role').lean(),
+    Incident.countDocuments(filter),
+    Incident.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
+    Incident.aggregate([{ $group: { _id: '$priority', count: { $sum: 1 } } }]),
+    Incident.find().sort({ updatedAt: -1 }).limit(8).select('incidentType status updatedAt priority').lean(),
+  ]);
+  const rows = incidents.map((i: any) => ({ ...i, id: String(i._id), reporter: i.reporterId, reporterId: i.reporterId?._id ?? i.reporterId, assignedOfficer: i.assignedOfficerId, assignedOfficerId: i.assignedOfficerId?._id ?? i.assignedOfficerId, coordinates: i.location?.coordinates ?? null, location: i.location?.coordinates?.length === 2 ? { latitude: i.location.coordinates[1], longitude: i.location.coordinates[0] } : null }));
+  return { incidents: rows, pagination: { page, limit, total, totalPages: Math.ceil(total / limit), hasMore: page * limit < total }, summary: { total: await Incident.countDocuments(), byStatus: Object.fromEntries(statusCounts.map((s: any) => [s._id, s.count])), byPriority: Object.fromEntries(priorityCounts.map((s: any) => [s._id, s.count])), recent } };
+}
+
+export async function listEligibleOfficers() {
+  return User.find({ role: 'Security Officer', isActive: true }).select('_id fullName').sort({ fullName: 1 }).lean();
+}
+
+async function responseAudit(userId: string, incident: any, action: string, metadata: Record<string, unknown> = {}) {
+  await AuditLog.create({ actorId: new Types.ObjectId(userId), action, resourceType: 'Incident', resourceId: incident._id, metadata });
+}
+
+export async function respondToIncident(id: string, userId: string, action: 'acknowledge'|'assign'|'escalate'|'resolve'|'note', input: { note?: string; officerId?: string }) {
+  if (!isValidObjectId(id)) throw new AppError('Incident not found', 404);
+  const incident = await Incident.findById(id);
+  if (!incident) throw new AppError('Incident not found', 404);
+  const now = new Date(); const note = input.note?.trim();
+  if (action === 'acknowledge') {
+    if (incident.status !== 'pending') throw new AppError('Only pending incidents can be acknowledged', 409);
+    incident.status = 'acknowledged'; incident.acknowledgedAt = now;
+  } else if (action === 'assign') {
+    if (!input.officerId || !isValidObjectId(input.officerId)) throw new AppError('A valid officerId is required', 400);
+    const officer = await User.findOne({ _id: input.officerId, role: 'Security Officer', isActive: true });
+    if (!officer) throw new AppError('Officer is not active or eligible for assignment', 422);
+    incident.assignedOfficerId = officer._id; incident.assignedAt = now;
+    incident.assignmentHistory.push({ officerId: officer._id, assignedBy: new Types.ObjectId(userId), at: now, note });
+    if (incident.status === 'pending' || incident.status === 'acknowledged') incident.status = 'assigned';
+  } else if (action === 'escalate') {
+    if (incident.status === 'resolved') throw new AppError('Resolved incidents cannot be escalated', 409);
+    if (incident.status === 'escalated') throw new AppError('Incident is already escalated', 409);
+    incident.status = 'escalated';
+  } else if (action === 'resolve') {
+    if (incident.status === 'resolved') throw new AppError('Incident is already resolved', 409);
+    incident.status = 'resolved'; incident.resolvedAt = now;
+  }
+  if (action === 'note') {
+    if (!note) throw new AppError('A note is required', 400);
+    incident.statusHistory.push({ status: incident.status, at: now, by: new Types.ObjectId(userId), note });
+  } else {
+    incident.statusHistory.push({ status: incident.status, at: now, by: new Types.ObjectId(userId), note: note ?? `Incident ${action}d` });
+  }
+  await incident.save();
+  await responseAudit(userId, incident, `incident.${action}`, { status: incident.status, note, officerId: input.officerId });
+  if (action === 'escalate') await createEscalationSmsNotifications(id, userId).catch((e) => console.error('Escalation notifications failed:', e));
+  return incident;
+}
+
+export async function autoEscalateStaleIncidents() {
+  const minutes = Math.max(1, Number(process.env.INCIDENT_ESCALATION_AFTER_MINUTES || 30));
+  const cutoff = new Date(Date.now() - minutes * 60_000);
+  const stale = await Incident.find({ status: { $in: ['pending', 'acknowledged'] }, createdAt: { $lte: cutoff }, autoEscalatedAt: { $exists: false } }).select('_id').lean();
+  for (const row of stale) {
+    const now = new Date();
+    const updated = await Incident.findOneAndUpdate({ _id: row._id, status: { $in: ['pending', 'acknowledged'] }, autoEscalatedAt: { $exists: false } }, { $set: { status: 'escalated', autoEscalatedAt: now }, $push: { statusHistory: { status: 'escalated', at: now, note: `Automatically escalated after ${minutes} minutes without resolution` } } }, { new: true });
+    if (!updated) continue;
+    await AuditLog.create({ actorType: 'system', action: 'incident.auto_escalated', resourceType: 'Incident', resourceId: updated._id, metadata: { minutes } });
+    await createEscalationSmsNotifications(String(updated._id), undefined).catch((e) => console.error('Auto escalation notification failed:', e));
+  }
+  return stale.length;
 }
